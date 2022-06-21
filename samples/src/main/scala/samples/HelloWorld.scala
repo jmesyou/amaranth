@@ -7,10 +7,10 @@ object HelloWorld {
 
   def checksum[T](data: Array[T]): Int = {
     var sum = 0
-    var idx = 0
-    while (idx < data.length) {
-      sum += data(idx).##
-      idx += 1
+    var index = 0
+    while (index < data.length) {
+      sum += data(index).##
+      index += 1
     }
     sum
   }

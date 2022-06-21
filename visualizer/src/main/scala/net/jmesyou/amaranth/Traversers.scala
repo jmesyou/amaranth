@@ -11,13 +11,14 @@ import implicits.*
 
 import java.io.{BufferedWriter, File, FileWriter}
 
-class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q) {
+class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q, val config: Main.Config) {
 
   import quotes.reflect._
 
   final val CTRL_FLOW_COLOR: String = "#ffb3b8"
   final val DATA_FLOW_COLOR: String = "#3ddbd9"
   final val READWRITE_COLOR: String = "#fa4d56"
+  final val DEF_COLOR: String = "#9ef0f0"
   final val CONST_COLOR: String = "#d9fbfb"
 
   def escape(s: String): String = s.replace("<", "\\<").replace(">", "\\>")
@@ -52,6 +53,9 @@ class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q) {
       case _: While => "While"
       case _: Assign => "Assign"
       case _: Typed => "Typed"
+      case _: TypeIdent => "TypeIdent"
+      case _: Inferred => "Inferred"
+      case _: Applied => "Applied"
     }
 
     def getLabel: Seq[DotAttr] = {
@@ -63,7 +67,7 @@ class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q) {
           case StringConstant(s: String) => "Constant(" + "\"" + s + "\"" + ")"
           case ClassOfConstant(tpe: TypeRepr) => "Class(" + tpe.typeSymbol.name + ")"
         }
-        case Select(_, name) =>" Select(" + tree.symbol.owner.name + "." + escape(name) + ")"
+        case Select(_, name) => "Select(" + tree.symbol.owner.name + "." + escape(name) + ")"
         case _ => nodeName
       }
       Seq(DotAttr("label", id + " " + label))
@@ -75,7 +79,19 @@ class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q) {
           DotAttr("style", "filled"),
           DotAttr("fillcolor",  CTRL_FLOW_COLOR)
         )
-      case Select(_, _) | Assign(_, _) | ValDef(_, _, _)  =>
+      case select: Select =>
+        if (select.symbol.isDefDef)
+          Seq(
+            DotAttr("style", "filled"),
+            DotAttr("fillcolor",  DEF_COLOR),
+          )
+        else
+          Seq(
+            DotAttr("style", "filled"),
+            DotAttr("fillcolor",  READWRITE_COLOR),
+            DotAttr("fontcolor", "white")
+          )
+      case Assign(_, _) | ValDef(_, _, _)  =>
         Seq(
           DotAttr("style", "filled"),
           DotAttr("fillcolor",  READWRITE_COLOR),
@@ -92,6 +108,10 @@ class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q) {
           DotAttr("style", "filled"),
           DotAttr("fillcolor",  CONST_COLOR),
           DotAttr("shape", "ellipse")
+        )
+      case tree if tree.symbol.isType =>
+        Seq(
+          DotAttr("style", "rounded")
         )
       case _ => Nil
     }
@@ -147,6 +167,11 @@ class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q) {
         Some(
           root,
           DotEdgeStmt(src.toOuter.nodeId, dst.toOuter.nodeId, Seq(DotAttr("style", "invis")))
+        )
+      else if (srcOuter.tree.symbol.isTerm && dstOuter.tree.symbol.isType)
+        Some(
+          root,
+          DotEdgeStmt(src.toOuter.nodeId, dst.toOuter.nodeId, Seq(DotAttr("style", "dashed")))
         )
       else
         Some(root, DotEdgeStmt(src.toOuter.nodeId, dst.toOuter.nodeId))
@@ -208,10 +233,10 @@ class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q) {
         given root: DotRootGraph = getRootGraph(Some(fullName))
 
         val dot = graph.toDot(root, edgeTransformer(root), cNodeTransformer = Some(cNodeTransformer(root)))
-        println(dot)
+
         dot.tap {
           text =>
-            val file = new File(fileName)
+            val file = new File(config.out.getPath + "/" + fileName)
             val bw = new BufferedWriter(new FileWriter(file))
             bw.write(text)
             bw.close()
@@ -273,13 +298,23 @@ class Traversers[Q <: scala.quoted.Quotes & Singleton](val quotes: Q) {
       case Assign(lhs, rhs) =>
         graphAndLinkTrees(Some(current), lhs :: List(rhs))
 
-      case ValDef(_, _, rhs) =>
+      case ValDef(_, tpt, rhs) =>
+        graphTree(Some(current), tpt)
         rhs.foreach(term => graphTree(Some(current), term))
 
-      case _: Ident | _: Literal | _: New => ()
+      case New(tpt) =>
+        graphTree(Some(current), tpt)
 
-      case Typed(term, tpt) => graphTree(Some(current), term)
-      case tree => throw new UnsupportedOperationException(s"${tree}")
+      case Typed(term, tpt) =>
+        graphTree(Some(current), term)
+        graphTree(Some(current), tpt)
+
+      case Applied(tpt, args) =>
+        graphAndLinkTrees(Some(current), tpt :: args)
+
+      case _: Ident | _: Literal | _: TypeIdent | _: Inferred => ()
+
+      case tree => throw new UnsupportedOperationException(s"${tree.getClass}")
     }
     current
   }

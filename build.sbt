@@ -25,6 +25,7 @@ lazy val visualizer = project
     libraryDependencies ++= Seq(
       ("org.scala-graph" %% "graph-core" % "1.13.5").cross(CrossVersion.for3Use2_13),
       ("org.scala-graph" %% "graph-dot" % "1.13.3").cross(CrossVersion.for3Use2_13),
+      "com.github.scopt" %% "scopt" % "4.0.1",
       "org.scala-lang" %% "scala3-tasty-inspector" % scala3Version,
       "org.scalameta" %% "munit" % "0.7.29" % Test
     )

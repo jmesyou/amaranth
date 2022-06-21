@@ -1,6 +1,11 @@
 #!/usr/bin/python3
 
 import sys
+import subprocess
 
-command = ["scala", "-classpath", "visualizer/target/scala-3.1.2/amaranth.jar", "net.jmesyou.amaranth.Main"] + sys.argv[
-                                                                                                               1:]
+command = ["scala"] + \
+        ["-classpath", "visualizer/target/scala-3.1.2/amaranth.jar"] + \
+        ["net.jmesyou.amaranth.Main"] + \
+        sys.argv[1:]
+
+subprocess.run(command)
